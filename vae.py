@@ -48,3 +48,4 @@ class VAE_1(nn.Module):
         x_recon = x_recon.view(-1, 3, self.input_dim[1], self.input_dim[2])  # Reshape to match input size
         return x, x_recon, mu, logvar
 
+

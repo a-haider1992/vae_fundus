@@ -1,5 +1,6 @@
 ﻿from vae import VAE_1
 from AEKmeans import AEKmeans
+
 import time
 import logging
 import matplotlib.pyplot as plt
@@ -36,6 +37,7 @@ def main():
     epochs = args.epochs
     max_norm = args.max_norm
     num_clusters = args.num_clusters
+
 
     logging.basicConfig(filename='vae.log', level=logging.INFO)
     logging.info(f'Input dimensions: {input_dim}')
@@ -107,6 +109,7 @@ def main():
         # Initialize the VAE model
         # vae = VAE_1(latent_dim)
         model = AEKmeans(input_dim, latent_dim, num_clusters)
+        # vae = VAE_1(latent_dim)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f"Using device: {device}")
         vae.to(device)
@@ -177,7 +180,6 @@ def main():
     def objective(trial):
         # Define the search space
         batch_size = trial.suggest_categorical("batch_size", [64, 128])
-        # Define additional parameters
         latent_dim = trial.suggest_int("latent_dim", 300, 400)
         # learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
         
