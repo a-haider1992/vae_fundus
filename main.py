@@ -1,5 +1,5 @@
 ﻿from vae import VAE_1
-from AEKmeans import AEKmeans
+from AEKmeans import AutoencoderKMeans
 
 import time
 import logging
@@ -23,11 +23,11 @@ from loss import Loss
 
 def parse_args():
     parser = argparse.ArgumentParser(description='VAE-GMM')
-    parser.add_argument('--input_dim', type=int, nargs='+', default=[3, 128, 128], help='input dimensions')
+    parser.add_argument('--input_dim', type=int, nargs='+', default=[3, 256, 256], help='input dimensions')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='learning rate')
-    parser.add_argument('--epochs', type=int, default=2, help='number of epochs')
+    parser.add_argument('--epochs', type=int, default=5, help='number of epochs')
     parser.add_argument('--max_norm', type=float, default=1.0, help='max norm for gradient clipping')
-    parser.add_argument('--num_clusters', type=int, default=10, help='number of clusters')
+    parser.add_argument('--num_clusters', type=int, default=5, help='number of clusters')
     args = parser.parse_args()
     return args
 
@@ -39,6 +39,7 @@ def main():
     max_norm = args.max_norm
     num_clusters = args.num_clusters
 
+    summary_writer = SummaryWriter()
 
     logging.basicConfig(filename='vae.log', level=logging.INFO)
     logging.info(f'Input dimensions: {input_dim}')
@@ -66,8 +67,8 @@ def main():
         print(f"Using Latent dim: {latent_dim}")
         
         # Update the batch_size in the dataloader
-        train_dataset = VAEDataset(txt_file="fundus_train.txt", root_dir="data", transform=transform)
-        test_dataset = VAEDataset(txt_file="fundus_test.txt", root_dir="data", transform=transform)
+        train_dataset = VAEDataset(txt_file="fundus_train.txt", root_dir=".", transform=transform)
+        test_dataset = VAEDataset(txt_file="fundus_test.txt", root_dir=".", transform=transform)
 
         # train_size = len(train_dataset)
         # test_size = len(test_dataset)
@@ -83,7 +84,7 @@ def main():
         train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=4, sampler=None)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, sampler=None)
 
-        model = AEKmeans(input_dim, latent_dim, num_clusters)
+        model = AutoencoderKMeans(input_dim, latent_dim, num_clusters)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f"Using device: {device}")
         model.to(device)
@@ -103,6 +104,7 @@ def main():
             for batch_idx, data in enumerate(train_loader):
                 data = data[0].to(device)  # Move data to GPU if available
                 optimizer.zero_grad()
+                # pdb.set_trace()
                 encoded, recon_batch, mu, logvar, centroids, assignments = model(data)                
                 if data.shape == recon_batch.shape:
                     loss, _ = loss.loss_function(recon_batch, data, encoded, centroids, assignments,mu, logvar)
@@ -118,13 +120,14 @@ def main():
                         logging.info('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                             epoch, batch_idx * len(data), len(train_loader.dataset),
                             100. * batch_idx / len(train_loader), loss.item() / len(data)))
+                        summary_writer.add_scalar('Loss/train', loss.item() / len(data), epoch * len(train_loader) + batch_idx)
                 else:
                     print(f'Input batch shape: {data.shape}')
                     print(f'Reconstructed batch shape: {recon_batch.shape}')
                     raise Exception("Shape of input and reconstructed input does not match!!")
             print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, total_loss / (len(train_loader.dataset) * epochs)))
             logging.info('====> Epoch: {} Average loss: {:.4f}'.format(epoch, total_loss / (len(train_loader.dataset) * epochs)))
-        # average_loss = total_loss / (len(train_loader.dataset) * epochs)
+            summary_writer.add_scalar('Loss/train_epoch', total_loss / (len(train_loader.dataset) * epochs), epoch)
 
         # Evaluate the trained model
         model.eval()
@@ -148,7 +151,7 @@ def main():
         # print(f'====> Test set SSIM: {average_ssim:.4f}')
         logging.info(f'====> Test set loss: {average_loss:.4f}')
         logging.info(f'====> Test set SSIM: {average_ssim:.4f}')
-        return average_loss, average_ssim
+        return average_loss
 
     # Define the search space
     # Define the objective function to optimize
@@ -165,12 +168,15 @@ def main():
 
     # Create an Optuna study
     study_name = time.strftime("%Y-%m-%d-%H-%M-%S")
-    study = optuna.create_study(storage=f"sqlite:///db_{study}.sqlite3", 
-                                direction="minimize", study_name=f"vae_study_{study_name}")
+    study = optuna.create_study(storage=f"sqlite:///db_{study_name}.sqlite3", 
+                                direction="minimize", study_name=f"Study_{study_name}")
 
 
     # Optimize the objective function
     study.optimize(objective, n_trials=10)
+    # Save the best performing model
+    best_model = study.best_trial.user_attrs['model']
+    torch.save(best_model.state_dict(), 'best_model.pth')
     logging.info(f"Best value: {study.best_value} (params: {study.best_params})")
     logging.info(f'Execution ended: {time.strftime("%Y-%m-%d-%H-%M-%S")}')
     print(f"Best value: {study.best_value} (params: {study.best_params})")

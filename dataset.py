@@ -54,7 +54,7 @@ class VAEDataset(Dataset):
                 on a sample.
         """
         self.txt_file = txt_file
-        self.root_dir = os.path.join(osp.dirname(os.path.dirname(__file__)), root_dir)
+        self.root_dir = root_dir
         self.transform = transform
 
         # pdb.set_trace()
