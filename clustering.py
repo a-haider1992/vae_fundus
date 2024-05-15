@@ -18,4 +18,4 @@ class KMeans(nn.Module):
         # Assign each point to the nearest centroid
         _, assignments = torch.min(distances, dim=1)  # [batch_size]
         
-        return assignments
+        return centroids, assignments

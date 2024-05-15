@@ -11,6 +11,6 @@ class AutoencoderKMeans(nn.Module):
     
     def forward(self, x):
         encoded, recon_x, mu, logvar = self.autoencoder(x)
-        assignments = self.kmeans(encoded)
-        return recon_x, mu, logvar,assignments
+        centroids, assignments = self.kmeans(encoded)
+        return encoded, recon_x, mu, logvar, centroids, assignments
     
