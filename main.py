@@ -88,7 +88,7 @@ def main():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f"Using device: {device}")
         model.to(device)
-        loss = Loss(input_dim[1], device)
+        loss_func = Loss(input_dim[1], device)
 
         if torch.cuda.device_count() > 1:
             model = nn.DataParallel(model)
@@ -107,7 +107,7 @@ def main():
                 # pdb.set_trace()
                 encoded, recon_batch, mu, logvar, centroids, assignments = model(data)                
                 if data.shape == recon_batch.shape:
-                    loss, _ = loss.loss_function(recon_batch, data, encoded, centroids, assignments,mu, logvar)
+                    loss, _ = loss_func.loss_function(recon_batch, data, encoded, centroids, assignments,mu, logvar)
                     loss.backward()
                     total_loss += loss.item()
                     nn.utils.clip_grad_norm_(model.parameters(), max_norm)
@@ -168,7 +168,7 @@ def main():
 
     # Create an Optuna study
     study_name = time.strftime("%Y-%m-%d-%H-%M-%S")
-    study = optuna.create_study(storage=f"sqlite:///db_{study_name}.sqlite3", 
+    study = optuna.create_study(storage="sqlite:///db.sqlite3", 
                                 direction="minimize", study_name=f"Study_{study_name}")
 
 
