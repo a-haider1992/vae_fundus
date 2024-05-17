@@ -20,6 +20,8 @@ import os
 import optuna
 import argparse
 from loss import Loss
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser(description='VAE-GMM')
@@ -57,6 +59,28 @@ def main():
         transforms.Resize([input_dim[1], input_dim[2]]),
         transforms.ToTensor(),
         ])
+
+    def plot_tsne(centroids, assignments, filename='tsne.png'):
+        # Detach and convert tensors to numpy arrays
+        # pdb.set_trace()
+        centroids = torch.mean(centroids, dim=0)
+        centroids = centroids.detach().cpu().numpy()
+        assignments = assignments.detach().cpu().numpy()
+
+        # Get the centroids corresponding to the assignments
+        assigned_centroids = centroids[assignments]
+
+        # Apply t-SNE
+        tsne = TSNE(n_components=2, random_state=0)
+        tsne_data = tsne.fit_transform(assigned_centroids)
+
+        # Plot t-SNE
+        plt.scatter(tsne_data[:, 0], tsne_data[:, 1], c=assignments, cmap='viridis')
+        plt.title('t-SNE of Assigned Centroids')
+        plt.xlabel('t-SNE Dimension 1')
+        plt.ylabel('t-SNE Dimension 2')
+        # plt.colorbar(label='Assignments')
+        plt.savefig(filename)
 
     # Define the trainable function
     def train_vae(config):
@@ -120,14 +144,15 @@ def main():
                         logging.info('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                             epoch, batch_idx * len(data), len(train_loader.dataset),
                             100. * batch_idx / len(train_loader), loss.item() / len(data)))
-                        summary_writer.add_scalar('Loss/train', loss.item() / len(data), epoch * len(train_loader) + batch_idx)
+                        plot_tsne(centroids, assignments)
+                        summary_writer.add_scalar('Loss/train_batch', loss.item() / len(data), batch_idx)
                 else:
                     print(f'Input batch shape: {data.shape}')
                     print(f'Reconstructed batch shape: {recon_batch.shape}')
                     raise Exception("Shape of input and reconstructed input does not match!!")
             print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, total_loss / (len(train_loader.dataset) * epochs)))
             logging.info('====> Epoch: {} Average loss: {:.4f}'.format(epoch, total_loss / (len(train_loader.dataset) * epochs)))
-            summary_writer.add_scalar('Loss/train_epoch', total_loss / (len(train_loader.dataset) * epochs), epoch)
+            # summary_writer.add_scalar('Loss/train_epoch', total_loss / (len(train_loader.dataset) * epochs), epoch)
 
         # Evaluate the trained model
         model.eval()
@@ -138,7 +163,7 @@ def main():
                 data = data[0].to(device)  # Move data to GPU if available
                 encoded, recon_batch, mu, logvar, centroids, assignments = model(data)
                 if data.shape == recon_batch.shape:
-                    loss, ssim = loss.loss_function(recon_batch, data, encoded, centroids, assignments,mu, logvar)
+                    loss, ssim = loss_func.loss_function(recon_batch, data, encoded, centroids, assignments,mu, logvar)
                     total_loss += loss.item()
                     total_ssim += ssim.item()
                 else:

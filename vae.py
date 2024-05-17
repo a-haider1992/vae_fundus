@@ -10,8 +10,8 @@ class VAE_1(nn.Module):
         self.encoder = models.resnet50(pretrained=True)
 
         # Freeze all the layers in the pretrained model
-        for param in self.encoder.parameters():
-            param.requires_grad = False
+        # for param in self.encoder.parameters():
+        #     param.requires_grad = False
 
         self.encoder.fc = nn.Sequential(
             nn.Linear(2048, 1024),
