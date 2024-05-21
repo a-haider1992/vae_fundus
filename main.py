@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='learning rate')
     parser.add_argument('--epochs', type=int, default=5, help='number of epochs')
     parser.add_argument('--max_norm', type=float, default=1.0, help='max norm for gradient clipping')
-    parser.add_argument('--num_clusters', type=int, default=5, help='number of clusters')
+    parser.add_argument('--num_clusters', type=int, default=3, help='number of clusters')
     args = parser.parse_args()
     return args
 
@@ -60,9 +60,8 @@ def main():
         transforms.ToTensor(),
         ])
 
-    def plot_tsne(centroids, assignments, filename='tsne.png'):
+    def plot_tsne(centroids, assignments, filename='tsne.png', outlier_threshold=1.5):
         # Detach and convert tensors to numpy arrays
-        # pdb.set_trace()
         centroids = torch.mean(centroids, dim=0)
         centroids = centroids.detach().cpu().numpy()
         assignments = assignments.detach().cpu().numpy()
@@ -71,15 +70,25 @@ def main():
         assigned_centroids = centroids[assignments]
 
         # Apply t-SNE
-        tsne = TSNE(n_components=2, random_state=0)
+        tsne = TSNE(n_components=2, perplexity=50.0, random_state=0)
         tsne_data = tsne.fit_transform(assigned_centroids)
 
+        # Calculate the mean and standard deviation of the t-SNE data
+        mean = np.mean(tsne_data, axis=0)
+        std_dev = np.std(tsne_data, axis=0)
+
+        # Identify the indices of points that are not outliers
+        non_outliers = np.all(np.abs(tsne_data - mean) < outlier_threshold * std_dev, axis=1)
+
+        # Filter the t-SNE data and assignments to exclude outliers
+        tsne_data_no_outliers = tsne_data[non_outliers]
+        assignments_no_outliers = assignments[non_outliers]
+
         # Plot t-SNE
-        plt.scatter(tsne_data[:, 0], tsne_data[:, 1], c=assignments, cmap='viridis')
+        plt.scatter(tsne_data_no_outliers[:, 0], tsne_data_no_outliers[:, 1], c=assignments_no_outliers, cmap='viridis')
         plt.title('t-SNE of Assigned Centroids')
         plt.xlabel('t-SNE Dimension 1')
         plt.ylabel('t-SNE Dimension 2')
-        # plt.colorbar(label='Assignments')
         plt.savefig(filename)
 
     # Define the trainable function
@@ -177,34 +186,36 @@ def main():
         logging.info(f'====> Test set loss: {average_loss:.4f}')
         logging.info(f'====> Test set SSIM: {average_ssim:.4f}')
         return average_loss
+    
+    train_vae({"batch_size": 128, "latent_dim": 350})
 
     # Define the search space
     # Define the objective function to optimize
-    def objective(trial):
-        # Define the search space
-        batch_size = trial.suggest_categorical("batch_size", [64, 128])
-        latent_dim = trial.suggest_int("latent_dim", 300, 400)
-        # learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
+    # def objective(trial):
+    #     # Define the search space
+    #     batch_size = trial.suggest_categorical("batch_size", [64, 128])
+    #     latent_dim = trial.suggest_int("latent_dim", 300, 400)
+    #     # learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
         
-        # Train the VAE model with the specified configuration
-        config = {"batch_size": batch_size, "latent_dim": latent_dim}
-        loss = train_vae(config)
-        return loss
+    #     # Train the VAE model with the specified configuration
+    #     config = {"batch_size": batch_size, "latent_dim": latent_dim}
+    #     loss = train_vae(config)
+    #     return loss
 
-    # Create an Optuna study
-    study_name = time.strftime("%Y-%m-%d-%H-%M-%S")
-    study = optuna.create_study(storage="sqlite:///db.sqlite3", 
-                                direction="minimize", study_name=f"Study_{study_name}")
+    # # Create an Optuna study
+    # study_name = time.strftime("%Y-%m-%d-%H-%M-%S")
+    # study = optuna.create_study(storage="sqlite:///db.sqlite3", 
+    #                             direction="minimize", study_name=f"Study_{study_name}")
 
 
-    # Optimize the objective function
-    study.optimize(objective, n_trials=10)
-    # Save the best performing model
-    best_model = study.best_trial.user_attrs['model']
-    torch.save(best_model.state_dict(), 'best_model.pth')
-    logging.info(f"Best value: {study.best_value} (params: {study.best_params})")
-    logging.info(f'Execution ended: {time.strftime("%Y-%m-%d-%H-%M-%S")}')
-    print(f"Best value: {study.best_value} (params: {study.best_params})")
+    # # Optimize the objective function
+    # study.optimize(objective, n_trials=10)
+    # # Save the best performing model
+    # best_model = study.best_trial.user_attrs['model']
+    # torch.save(best_model.state_dict(), 'best_model.pth')
+    # logging.info(f"Best value: {study.best_value} (params: {study.best_params})")
+    # logging.info(f'Execution ended: {time.strftime("%Y-%m-%d-%H-%M-%S")}')
+    # print(f"Best value: {study.best_value} (params: {study.best_params})")
 
     
 if __name__ == "__main__":
