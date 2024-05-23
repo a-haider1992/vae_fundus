@@ -19,10 +19,12 @@ class ExplanationsPatchesDataset(Dataset):
         self.txt_file = txt_file
         self.root_dir = root_dir
         self.transform = transform
-        pdb.set_trace()
-        df = pd.read_csv(txt_file, header=None, index_col=False, sep=' ')
+
+        # pdb.set_trace()
+        
+        df = pd.read_csv(osp.join(self.root_dir, txt_file), header=None, index_col=False, sep=',')
         self.data = df.values
-        self.image_paths = np.array([osp.join(x) for x in self.data[:, 0]])
+        self.image_paths = np.array([osp.join(self.root_dir, x) for x in self.data[:, 0]])
         
     def __len__(self):
         return len(self.image_paths)

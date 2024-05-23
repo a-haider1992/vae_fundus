@@ -101,7 +101,8 @@ def main():
         
         # Update the batch_size in the dataloader
         train_dataset = VAEDataset(txt_file="fundus_train.txt", root_dir=".", transform=transform)
-        test_dataset = VAEDataset(txt_file="fundus_test.txt", root_dir=".", transform=transform)
+        # test_dataset = VAEDataset(txt_file="fundus_test.txt", root_dir=".", transform=transform)
+        test_dataset = ExplanationsPatchesDataset(txt_file="fundus_explanations.txt", root_dir=".", transform=transform)
 
         # train_size = len(train_dataset)
         # test_size = len(test_dataset)
@@ -175,6 +176,7 @@ def main():
                     loss, ssim = loss_func.loss_function(recon_batch, data, encoded, centroids, assignments,mu, logvar)
                     total_loss += loss.item()
                     total_ssim += ssim.item()
+                    plot_tsne(centroids, assignments, filename='tsne_explanations.png')
                 else:
                     print(f'Input batch shape: {data.shape}')
                     print(f'Reconstructed batch shape: {recon_batch.shape}')
@@ -215,6 +217,7 @@ def main():
         logging.info("Evaluation mode: Generating explanations clusters")
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
+                pdb.set_trace()
                 data = data[0].to(device)
                 encoded, recon_batch, mu, logvar, centroids, assignments = model(data)
                 plot_tsne(centroids, assignments, filename='tsne_explanations.png')
@@ -222,7 +225,7 @@ def main():
     if not os.path.exists('model.pth'):
         train_vae({"batch_size": 128, "latent_dim": 350})
     else:
-        infer_vae({"batch_size": 64, "latent_dim": 350})
+        infer_vae({"batch_size": 128, "latent_dim": 350})
 
     # Define the search space
     # Define the objective function to optimize
