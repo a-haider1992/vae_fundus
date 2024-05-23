@@ -10,7 +10,7 @@ from piqa import SSIM
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from dataset import VAEDataset
+from dataset import VAEDataset, ExplanationsPatchesDataset
 import pdb
 import torch.optim as optim
 import torch.nn as nn
@@ -185,9 +185,44 @@ def main():
         # print(f'====> Test set SSIM: {average_ssim:.4f}')
         logging.info(f'====> Test set loss: {average_loss:.4f}')
         logging.info(f'====> Test set SSIM: {average_ssim:.4f}')
+        torch.save(model.state_dict(), 'model.pth')
         return average_loss
     
-    train_vae({"batch_size": 128, "latent_dim": 350})
+    def infer_vae(config):
+        # Set the batch_size parameter
+        batch_size = config["batch_size"]
+        latent_dim = config["latent_dim"]
+        print(f"Using Batch size: {batch_size}")
+        print(f"Using Latent dim: {latent_dim}")
+        
+        # Update the batch_size in the dataloader
+        # filename = 'fundus_explanations.txt' contains the list of images to be used for inference
+        # The images are explanations generated DeepCover (refer to the paper for more details)
+        # The images are the found locations by DeepCover in the original fundus images
+        test_dataset = ExplanationsPatchesDataset(txt_file="fundus_explanations.txt", root_dir=".", transform=transform)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, sampler=None)
+
+        model = AutoencoderKMeans(input_dim, latent_dim, num_clusters)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logging.info(f"Using device: {device}")
+        model.to(device)
+
+        if torch.cuda.device_count() > 1:
+            model = nn.DataParallel(model)
+        
+        model.load_state_dict(torch.load('model.pth'))
+        model.eval()
+        logging.info("Evaluation mode: Generating explanations clusters")
+        with torch.no_grad():
+            for batch_idx, data in enumerate(test_loader):
+                data = data[0].to(device)
+                encoded, recon_batch, mu, logvar, centroids, assignments = model(data)
+                plot_tsne(centroids, assignments, filename='tsne_explanations.png')
+    
+    if not os.path.exists('model.pth'):
+        train_vae({"batch_size": 128, "latent_dim": 350})
+    else:
+        infer_vae({"batch_size": 64, "latent_dim": 350})
 
     # Define the search space
     # Define the objective function to optimize
