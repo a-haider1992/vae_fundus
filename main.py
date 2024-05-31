@@ -61,38 +61,7 @@ def main():
         transforms.ToTensor(),
         ])
 
-    def plot_tsne(centroids, assignments, filename='tsne.png', outlier_threshold=1.5):
-        # Detach and convert tensors to numpy arrays
-        centroids = torch.mean(centroids, dim=0)
-        centroids = centroids.detach().cpu().numpy()
-        assignments = assignments.detach().cpu().numpy()
-
-        # Get the centroids corresponding to the assignments
-        assigned_centroids = centroids[assignments]
-
-        # Apply t-SNE
-        tsne = TSNE(n_components=2, perplexity=50.0, random_state=0)
-        tsne_data = tsne.fit_transform(assigned_centroids)
-
-        # Calculate the mean and standard deviation of the t-SNE data
-        mean = np.mean(tsne_data, axis=0)
-        std_dev = np.std(tsne_data, axis=0)
-
-        # Identify the indices of points that are not outliers
-        non_outliers = np.all(np.abs(tsne_data - mean) < outlier_threshold * std_dev, axis=1)
-
-        # Filter the t-SNE data and assignments to exclude outliers
-        tsne_data_no_outliers = tsne_data[non_outliers]
-        assignments_no_outliers = assignments[non_outliers]
-
-        # Plot t-SNE
-        plt.scatter(tsne_data_no_outliers[:, 0], tsne_data_no_outliers[:, 1], c=assignments_no_outliers, cmap='viridis')
-        plt.title('t-SNE of Assigned Centroids')
-        plt.xlabel('t-SNE Dimension 1')
-        plt.ylabel('t-SNE Dimension 2')
-        plt.savefig(filename)
-
-    def plot_tsneV1(encoded, assignments, filename='tsne_plot.png'):
+    def plot_tsneV1(encoded, assignments, labels=None, filename='tsne_plot.png'):
         # Perform t-SNE on the encoded vectors
         tsne = TSNE(n_components=2, random_state=0)
         tsne_results = tsne.fit_transform(encoded.detach().cpu().numpy())
@@ -118,6 +87,37 @@ def main():
         plt.legend()
         plt.savefig(filename)
 
+    # def plot_tsneV1(encoded, assignments, labels=None, filename='tsne_plot.png'):
+    #     # Perform t-SNE on the encoded vectors
+    #     tsne = TSNE(n_components=2, random_state=0)
+    #     tsne_results = tsne.fit_transform(encoded.detach().cpu().numpy())
+        
+    #     # Calculate the centroids of the clusters in the t-SNE space
+    #     num_clusters = len(torch.unique(assignments))
+    #     centroids = np.zeros((num_clusters, 2))
+
+    #     for i in range(num_clusters):
+    #         centroids[i] = tsne_results[assignments.detach().cpu().numpy() == i].mean(axis=0)
+        
+    #     # Plot the t-SNE results
+    #     plt.figure(figsize=(10, 7))
+    #     scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=assignments.detach().cpu().numpy(), cmap='viridis', s=5)
+            
+    #     # Plot the centroids
+    #     plt.scatter(centroids[:, 0], centroids[:, 1], c='red', marker='X', s=100, label='Centroids')
+        
+    #     # Annotate each point with its label
+    #     if labels is not None:
+    #         for i, txt in enumerate(labels):
+    #             plt.text(tsne_results[i, 0], tsne_results[i, 1], str(txt), fontsize=9)
+        
+    #     plt.title('t-SNE of Encoded Vectors')
+    #     plt.xlabel('t-SNE Dimension 1')
+    #     plt.ylabel('t-SNE Dimension 2')
+    #     plt.colorbar(scatter, label='Cluster Assignment')
+    #     plt.legend()
+    #     plt.savefig(filename)
+
     # Define the trainable function
     def train_vae(config):
         # Set the batch_size parameter
@@ -130,17 +130,6 @@ def main():
         train_dataset = VAEDataset(txt_file="fundus_train.txt", root_dir=".", transform=transform)
         # test_dataset = VAEDataset(txt_file="fundus_test.txt", root_dir=".", transform=transform)
         test_dataset = ExplanationsPatchesDataset(txt_file="fundus_explanations.txt", root_dir=".", transform=transform)
-
-        # train_size = len(train_dataset)
-        # test_size = len(test_dataset)
-
-        # train_indices = list(range(train_size))
-        # test_indices = list(range(test_size))
-
-        # train_limit = int(train_size * 0.1)
-        # test_limit = int(test_size * 0.1)
-
-        # pdb.set_trace()
 
         train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=4, sampler=None)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, sampler=None)
@@ -263,18 +252,36 @@ def main():
         kmeans.load_state_dict(torch.load('kmeans.pth'))
         encoded_vectors = []
         assignments_list = []
+        cluster_assignments = {'0': [], '1': [], '2': []}
         logging.info("Evaluation mode: Generating explanations clusters")
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
                 # pdb.set_trace()
-                data = data[0].to(device)
-                encoded, recon_batch, mu, logvar = model(data)
+                image = data[0].to(device)
+                label = data[1]
+                encoded, recon_batch, mu, logvar = model(image)
                 centroids, assignments = kmeans(encoded.detach())
                 encoded_vectors.append(encoded)
                 assignments_list.append(assignments)
+                for i, assign in enumerate(assignments):
+                    cluster_assignments[str(assign.item())].append(label[i])
             encoded_vectors = torch.cat(encoded_vectors)
             assignments_list = torch.cat(assignments_list)
-            plot_tsneV1(encoded_vectors, assignments_list, filename='tsne_plot_infer.png')
+            for key, value in cluster_assignments.items():
+                # counts = np.unique(value, return_counts=True)
+                counts = {}
+                for item in value:
+                    if item == '0':
+                        label = 'Class 0'
+                        counts[label] = counts.get(label, 0) + 1
+                    elif item == '1':
+                        label = 'Class 1'
+                        counts[label] = counts.get(label, 0) + 1
+                    elif item == '2':
+                        label = 'Class 2'
+                        counts[label] = counts.get(label, 0) + 1
+                print(f'Cluster {key}: {counts}')        
+            plot_tsneV1(encoded_vectors, assignments_list, labels=label, filename='tsne_plot_infer.png')
     
     if not os.path.exists('model.pth') and not os.path.exists('kmeans.pth'):
         train_vae({"batch_size": 128, "latent_dim": 350})
