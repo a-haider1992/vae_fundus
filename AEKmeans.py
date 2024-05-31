@@ -4,13 +4,11 @@ from vae import VAE_1
 from clustering import KMeans
 
 class AutoencoderKMeans(nn.Module):
-    def __init__(self, input_dim, latent_dim, num_clusters):
+    def __init__(self, input_dim, latent_dim):
         super(AutoencoderKMeans, self).__init__()
         self.autoencoder = VAE_1(input_dim, latent_dim)
-        self.kmeans = KMeans(num_clusters, latent_dim)
     
     def forward(self, x):
         encoded, recon_x, mu, logvar = self.autoencoder(x)
-        centroids, assignments = self.kmeans(encoded)
-        return encoded, recon_x, mu, logvar, centroids, assignments
+        return encoded, recon_x, mu, logvar
     

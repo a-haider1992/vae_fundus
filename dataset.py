@@ -24,7 +24,9 @@ class ExplanationsPatchesDataset(Dataset):
         
         df = pd.read_csv(osp.join(self.root_dir, txt_file), header=None, index_col=False, sep=',')
         self.data = df.values
+        self.labels = np.array([(x.split("/")[1]) for x in self.data[:, 0]])
         self.image_paths = np.array([osp.join(self.root_dir, x) for x in self.data[:, 0]])
+        
         
     def __len__(self):
         return len(self.image_paths)
@@ -33,7 +35,8 @@ class ExplanationsPatchesDataset(Dataset):
         image = Image.open(self.image_paths[idx])
         if self.transform:
             image = self.transform(image)
-        return image
+        label = self.labels[idx]
+        return image, label
 
 
 class VAEDataset(Dataset):
