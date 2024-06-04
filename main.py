@@ -28,7 +28,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='VAE-GMM')
     parser.add_argument('--input_dim', type=int, nargs='+', default=[3, 256, 256], help='input dimensions')
     parser.add_argument('--learning_rate', type=float, default=1e-4, help='learning rate')
-    parser.add_argument('--epochs', type=int, default=2, help='number of epochs')
+    parser.add_argument('--epochs', type=int, default=5, help='number of epochs')
     parser.add_argument('--max_norm', type=float, default=1.0, help='max norm for gradient clipping')
     parser.add_argument('--num_clusters', type=int, default=3, help='number of clusters')
     args = parser.parse_args()
@@ -153,41 +153,46 @@ def main():
         # Training loop
         model.train()
         logging.info("Training the model")
-        for epoch in range(epochs):
-            for batch_idx, data in enumerate(train_loader):
-                data = data[0].to(device)  # Move data to GPU if available
-                optimizer.zero_grad()
-                # pdb.set_trace()
-                encoded, recon_batch, mu, logvar = model(data)                
-                if data.shape == recon_batch.shape:
-                    loss, _ = loss_func.loss_function(recon_batch, data, mu, logvar)
-                    loss.backward()
-                    total_loss += loss.item()
-                    nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-                    optimizer.step()
-                    encoded_vectors.append(encoded)
-                    centroids, assignments = kmeans(encoded.detach())
-                    assignments_list.append(assignments)
-        
-                    # Update centroids
-                    kmeans.update_centroids(encoded.detach(), assignments)
-                    if batch_idx % 100 == 0:
-                        print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                            epoch, batch_idx * len(data), len(train_loader.dataset),
-                            100. * batch_idx / len(train_loader), loss.item() / len(data)))
-                        logging.info('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                            epoch, batch_idx * len(data), len(train_loader.dataset),
-                            100. * batch_idx / len(train_loader), loss.item() / len(data)))
-                        summary_writer.add_scalar('Loss/train_batch', loss.item() / len(data), batch_idx)
-                        # encoded_vectors1 = torch.cat(encoded_vectors)
-                        # assignments_list1 = torch.cat(assignments_list)
-                        # plot_tsneV1(encoded_vectors1, assignments_list1, filename='tsne_plot.png')
-                else:
-                    print(f'Input batch shape: {data.shape}')
-                    print(f'Reconstructed batch shape: {recon_batch.shape}')
-                    raise Exception("Shape of input and reconstructed input does not match!!")
-            print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, total_loss / (len(train_loader.dataset) * epochs)))
-            logging.info('====> Epoch: {} Average loss: {:.4f}'.format(epoch, total_loss / (len(train_loader.dataset) * epochs)))
+        try:
+            for epoch in range(epochs):
+                for batch_idx, data in enumerate(train_loader):
+                    data = data[0].to(device)  # Move data to GPU if available
+                    optimizer.zero_grad()
+                    # pdb.set_trace()
+                    encoded, recon_batch, mu, logvar = model(data)                
+                    if data.shape == recon_batch.shape:
+                        loss, _ = loss_func.loss_function(recon_batch, data, mu, logvar)
+                        loss.backward()
+                        total_loss += loss.item()
+                        nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+                        optimizer.step()
+                        encoded_vectors.append(encoded)
+                        centroids, assignments = kmeans(encoded.detach())
+                        assignments_list.append(assignments)
+            
+                        # Update centroids
+                        kmeans.update_centroids(encoded.detach(), assignments)
+                        if batch_idx % 100 == 0:
+                            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                                epoch, batch_idx * len(data), len(train_loader.dataset),
+                                100. * batch_idx / len(train_loader), loss.item() / len(data)))
+                            logging.info('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                                epoch, batch_idx * len(data), len(train_loader.dataset),
+                                100. * batch_idx / len(train_loader), loss.item() / len(data)))
+                            summary_writer.add_scalar('Loss/train_batch', loss.item() / len(data), batch_idx)
+                            # encoded_vectors1 = torch.cat(encoded_vectors)
+                            # assignments_list1 = torch.cat(assignments_list)
+                            # plot_tsneV1(encoded_vectors1, assignments_list1, filename='tsne_plot.png')
+                    else:
+                        print(f'Input batch shape: {data.shape}')
+                        print(f'Reconstructed batch shape: {recon_batch.shape}')
+                        raise Exception("Shape of input and reconstructed input does not match!!")
+                print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, total_loss / (len(train_loader.dataset) * epochs)))
+                logging.info('====> Epoch: {} Average loss: {:.4f}'.format(epoch, total_loss / (len(train_loader.dataset) * epochs)))
+        except Exception as e:
+            logging.error(f"Error occurred: {e}")
+            torch.save(model.state_dict(), 'model.pth')
+            torch.save(kmeans.state_dict(), 'kmeans.pth')
             # summary_writer.add_scalar('Loss/train_epoch', total_loss / (len(train_loader.dataset) * epochs), epoch)
 
         torch.save(model.state_dict(), 'model.pth')
