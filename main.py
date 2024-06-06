@@ -263,18 +263,21 @@ def main():
         encoded_vectors = []
         assignments_list = []
         labels = []
-        cluster_assignments = {'0': [], '1': [], '2': []}
+        paths = []
+        # cluster_assignments = {'0': [], '1': [], '2': []}
         logging.info("Evaluation mode: Generating explanations clusters")
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
                 # pdb.set_trace()
                 image = data[0].to(device)
                 label = data[1]
+                path = data[2]
                 encoded, recon_batch, mu, logvar = model(image)
                 centroids, assignments = kmeans(encoded.detach())
                 encoded_vectors.append(encoded)
                 assignments_list.append(assignments)
                 labels.append(label)
+                paths.append(path)
             #     for i, assign in enumerate(assignments):
             #         cluster_assignments[str(assign.item())].append(label[i])
             encoded_vectors = torch.cat(encoded_vectors)
@@ -301,13 +304,35 @@ def main():
             assignments_gmm = gmm.predict(encoded_vectors.cpu().numpy())
             # pdb.set_trace()
             flattened_labels = [string for tuple in labels for string in tuple]
+            paths = [string for tuple in paths for string in tuple]
             assert len(assignments_gmm) == len(flattened_labels), "Length of assignments and labels do not match"
+            # Initialize dictionary to store cluster assignments
+            cluster_assignments = {str(i): {'label':[], 'distance':[], 'paths':[]} for i in range(num_clusters)}
+            # Calculate and store distances from the centroid
             for i, assign in enumerate(assignments_gmm):
-                cluster_assignments[str(assign.item())].append(flattened_labels[i])
-            # pdb.set_trace()
+                cluster_assignments[str(assign)]['label'].append(flattened_labels[i])
+                cluster_assignments[str(assign)]['paths'].append(paths[i])
+                # Calculate distance from the centroid
+                distance = np.linalg.norm(encoded_vectors[i].cpu().numpy() - gmm.means_[assign])
+                # print(f'GMM means: {gmm.means_[assign]}')
+                cluster_assignments[str(assign)]['distance'].append(distance)
+
+            # Sort paths by distance within each cluster and print top 10
+            for key, value in cluster_assignments.items():
+                # Combine distances and paths and sort them
+                combined = list(zip(value['distance'], value['paths']))
+                sorted_combined = sorted(combined, key=lambda x: x[0])
+                top_10_combined = sorted_combined[:10]  # Get top 10 paths and distances
+                
+                # Print top 10 paths and distances for each cluster
+                print(f'Cluster {key}:')
+                for distance, path in top_10_combined:
+                    print(f'Path: {path}, Distance: {distance}')
+
+            # Print cluster information
             for key, value in cluster_assignments.items():
                 counts = {}
-                for item in value:
+                for item in value['label']:
                     if item == '0':
                         label = 'Class 0'
                         counts[label] = counts.get(label, 0) + 1
