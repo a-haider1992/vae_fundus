@@ -21,6 +21,7 @@ import optuna
 import argparse
 from loss import Loss
 from sklearn.manifold import TSNE
+from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
 from clustering import KMeans
 
@@ -63,7 +64,7 @@ def main():
 
     def plot_tsneV1(encoded, assignments, labels=None, filename='tsne_plot.png'):
         # Perform t-SNE on the encoded vectors
-        tsne = TSNE(n_components=2, random_state=0)
+        tsne = TSNE(n_components=2, perplexity=5, learning_rate=200, n_iter=2000, random_state=0)
         tsne_results = tsne.fit_transform(encoded.detach().cpu().numpy())
         
         # Calculate the centroids of the clusters in the t-SNE space
@@ -127,7 +128,7 @@ def main():
         print(f"Using Latent dim: {latent_dim}")
         
         # Update the batch_size in the dataloader
-        train_dataset = VAEDataset(txt_file="fundus_train.txt", root_dir=".", transform=transform)
+        train_dataset = VAEDataset(txt_file="fundus_patches.txt", root_dir=".", transform=transform)
         # test_dataset = VAEDataset(txt_file="fundus_test.txt", root_dir=".", transform=transform)
         test_dataset = ExplanationsPatchesDataset(txt_file="fundus_explanations.txt", root_dir=".", transform=transform)
 
@@ -156,12 +157,15 @@ def main():
         try:
             for epoch in range(epochs):
                 for batch_idx, data in enumerate(train_loader):
-                    data = data[0].to(device)  # Move data to GPU if available
+                    image, masked_image = data[0], data[1]  # Move data to GPU if available
+                    # pdb.set_trace()
+                    image, masked_image = image.to(device), masked_image.to(device)
+                    # data = data[0].to(device)  # Move data to GPU if available
                     optimizer.zero_grad()
                     # pdb.set_trace()
-                    encoded, recon_batch, mu, logvar = model(data)                
-                    if data.shape == recon_batch.shape:
-                        loss, _ = loss_func.loss_function(recon_batch, data, mu, logvar)
+                    encoded, recon_batch, mu, logvar = model(masked_image)                
+                    if image.shape == recon_batch.shape:
+                        loss, _ = loss_func.loss_function(recon_batch, image, mu, logvar)
                         loss.backward()
                         total_loss += loss.item()
                         nn.utils.clip_grad_norm_(model.parameters(), max_norm)
@@ -205,10 +209,11 @@ def main():
         logging.info("Evaluating the model")
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
-                data = data[0].to(device)  # Move data to GPU if available
-                encoded, recon_batch, mu, logvar = model(data)
-                if data.shape == recon_batch.shape:
-                    loss, ssim = loss_func.loss_function(recon_batch, data, mu, logvar)
+                image, masked_image = data[0].to(device), data[1].to(device)  # Move data to GPU if available
+                # data = data[0].to(device)  # Move data to GPU if available
+                encoded, recon_batch, mu, logvar = model(image)
+                if image.shape == recon_batch.shape:
+                    loss, ssim = loss_func.loss_function(recon_batch, image, mu, logvar)
                     total_loss += loss.item()
                     total_ssim += ssim.item()
                     centroids, assignments = kmeans(encoded.detach())
@@ -257,6 +262,7 @@ def main():
         kmeans.load_state_dict(torch.load('kmeans.pth'))
         encoded_vectors = []
         assignments_list = []
+        labels = []
         cluster_assignments = {'0': [], '1': [], '2': []}
         logging.info("Evaluation mode: Generating explanations clusters")
         with torch.no_grad():
@@ -268,12 +274,38 @@ def main():
                 centroids, assignments = kmeans(encoded.detach())
                 encoded_vectors.append(encoded)
                 assignments_list.append(assignments)
-                for i, assign in enumerate(assignments):
-                    cluster_assignments[str(assign.item())].append(label[i])
+                labels.append(label)
+            #     for i, assign in enumerate(assignments):
+            #         cluster_assignments[str(assign.item())].append(label[i])
             encoded_vectors = torch.cat(encoded_vectors)
-            assignments_list = torch.cat(assignments_list)
+            # assignments_list = torch.cat(assignments_list)
+            # for key, value in cluster_assignments.items():
+            #     # counts = np.unique(value, return_counts=True)
+            #     counts = {}
+            #     for item in value:
+            #         if item == '0':
+            #             label = 'Class 0'
+            #             counts[label] = counts.get(label, 0) + 1
+            #         elif item == '1':
+            #             label = 'Class 1'
+            #             counts[label] = counts.get(label, 0) + 1
+            #         elif item == '2':
+            #             label = 'Class 2'
+            #             counts[label] = counts.get(label, 0) + 1
+            #     print(f'Cluster {key}: {counts}')        
+            # plot_tsneV1(encoded_vectors, assignments_list, labels=label, filename='tsne_plot_infer.png')
+
+            # Fit GMM
+            gmm = GaussianMixture(n_components=num_clusters, covariance_type='full')
+            gmm.fit(encoded_vectors.cpu().numpy())
+            assignments_gmm = gmm.predict(encoded_vectors.cpu().numpy())
+            # pdb.set_trace()
+            flattened_labels = [string for tuple in labels for string in tuple]
+            assert len(assignments_gmm) == len(flattened_labels), "Length of assignments and labels do not match"
+            for i, assign in enumerate(assignments_gmm):
+                cluster_assignments[str(assign.item())].append(flattened_labels[i])
+            # pdb.set_trace()
             for key, value in cluster_assignments.items():
-                # counts = np.unique(value, return_counts=True)
                 counts = {}
                 for item in value:
                     if item == '0':
@@ -285,8 +317,9 @@ def main():
                     elif item == '2':
                         label = 'Class 2'
                         counts[label] = counts.get(label, 0) + 1
-                print(f'Cluster {key}: {counts}')        
-            plot_tsneV1(encoded_vectors, assignments_list, labels=label, filename='tsne_plot_infer.png')
+                print(f'Cluster {key}: {counts}')
+            # plot the t-SNE plot here
+            plot_tsneV1(encoded_vectors, torch.tensor(assignments_gmm), filename='tsne_plot_GMM.png')
     
     if not os.path.exists('model.pth') and not os.path.exists('kmeans.pth'):
         train_vae({"batch_size": 128, "latent_dim": 350})
