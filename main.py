@@ -233,6 +233,42 @@ def main():
         logging.info(f'====> Test set loss: {average_loss:.4f}')
         logging.info(f'====> Test set SSIM: {average_ssim:.4f}')
         return average_loss
+
+    # Function to load and plot images
+    def plot_images(paths, cluster_num):
+        fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+        axes = axes.ravel()
+        for idx, path in enumerate(paths):
+            img = Image.open(path)
+            axes[idx].imshow(img)
+            axes[idx].set_title(f"Image {idx + 1}")
+            axes[idx].axis('off')
+        plt.suptitle(f"Cluster {cluster_num} - Top 10 Images")
+        plt.savefig(f'cluster_{cluster_num}.png')
+
+    # Function to load and plot images in a grid
+    def plot_all_clusters(cluster_assignments, num_clusters):
+        fig, axes = plt.subplots(num_clusters, 10, figsize=(20, 2 * num_clusters))
+        
+        for cluster_num, (key, value) in enumerate(cluster_assignments.items()):
+            combined = list(zip(value['distance'], value['paths']))
+            sorted_combined = sorted(combined, key=lambda x: x[0])
+            top_10_combined = sorted_combined[:10]  # Get top 10 paths and distances
+            
+            for idx, (distance, path) in enumerate(top_10_combined):
+                img = Image.open(path)
+                axes[cluster_num, idx].imshow(img)
+                axes[cluster_num, idx].set_title(f"{distance:.2f}", fontsize=8)
+                axes[cluster_num, idx].axis('off')
+            
+            # Add cluster number as a super title for the row
+            axes[cluster_num, 0].annotate(f"Cluster {key}", xy=(0, 0.5), xytext=(-axes[cluster_num, 0].yaxis.labelpad - 5, 0),
+                                        xycoords=axes[cluster_num, 0].yaxis.label, textcoords='offset points',
+                                        size='large', ha='right', va='center')
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        plt.suptitle("Top 10 Images for Each Cluster", y=0.98, fontsize=16)
+        plt.savefig('all_clusters.png')
     
     def infer_vae(config):
         # Set the batch_size parameter
@@ -328,6 +364,16 @@ def main():
                 print(f'Cluster {key}:')
                 for distance, path in top_10_combined:
                     print(f'Path: {path}, Distance: {distance}')
+                
+                # Extract the top 10 paths for plotting
+                top_10_paths = [path for _, path in top_10_combined]
+                
+                # Plot the top 10 images for the current cluster
+                plot_images(top_10_paths, key)
+            
+            # Plot all clusters
+            plot_all_clusters(cluster_assignments, num_clusters)
+            
 
             # Print cluster information
             for key, value in cluster_assignments.items():
