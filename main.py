@@ -410,6 +410,7 @@ def main():
                 path = data[2]
                 encoded, recon_batch, mu, logvar = model(image)
                 centroids, assignments = kmeans(encoded.detach())
+                kmeans.update_centroids(encoded.detach(), assignments)
                 encoded_vectors.append(encoded)
                 assignments_list.append(assignments)
                 labels.append(label)
