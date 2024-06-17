@@ -16,8 +16,9 @@ import torch.optim as optim
 import torch.nn as nn
 import torch
 import numpy as np
-import os
+import os, shutil
 import optuna
+import cv2
 import argparse
 from loss import Loss
 from sklearn.manifold import TSNE
@@ -269,6 +270,53 @@ def main():
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.suptitle("Top 10 Images for Each Cluster", y=0.98, fontsize=16)
         plt.savefig('all_clusters.png')
+
+    def highlight_patch_location(original_image_path, patch_image_path):
+        # pdb.set_trace()
+        if not os.path.exists("Highlighted_Images"):
+            os.makedirs("Highlighted_Images")
+        # else:
+        #     print("Directory already exists")
+        #     shutil.rmtree("Highlighted_Images")
+        #     os.makedirs("Highlighted_Images")
+        # Load the original image and the patch image
+        # print(f"Original image path: {original_image_path}")
+        original_image = cv2.imread(original_image_path)
+        patch_image = cv2.imread(patch_image_path)
+
+        if original_image is None or patch_image is None:
+            print("Error: Could not load one of the images.")
+            return
+
+        # Convert images to grayscale
+        gray_original = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
+        gray_patch = cv2.cvtColor(patch_image, cv2.COLOR_BGR2GRAY)
+
+        # Perform template matching
+        result = cv2.matchTemplate(gray_original, gray_patch, cv2.TM_CCOEFF_NORMED)
+
+        # Get the best match position
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+
+        # Get the dimensions of the patch image
+        patch_height, patch_width = gray_patch.shape
+
+        # Define the rectangle coordinates
+        top_left = max_loc
+        bottom_right = (top_left[0] + patch_width, top_left[1] + patch_height)
+
+        # Draw a rectangle around the detected patch
+        highlighted_image = original_image.copy()
+        cv2.rectangle(highlighted_image, top_left, bottom_right, (0, 255, 0), 2)
+
+        # Display the images
+        class_label = original_image_path.split('/')[-2]
+        class_dir = os.path.join("Highlighted_Images", class_label)
+        if not os.path.exists(class_dir):
+            os.makedirs(class_dir)
+        highlighted_image_name = f"{class_dir}/TE-" + original_image_path.split('/')[-1]
+        # print(f"Saving highlighted image to: {highlighted_image_name}")
+        cv2.imwrite(highlighted_image_name, highlighted_image)
     
     def infer_vae(config):
         # Set the batch_size parameter
@@ -317,23 +365,6 @@ def main():
             #     for i, assign in enumerate(assignments):
             #         cluster_assignments[str(assign.item())].append(label[i])
             encoded_vectors = torch.cat(encoded_vectors)
-            # assignments_list = torch.cat(assignments_list)
-            # for key, value in cluster_assignments.items():
-            #     # counts = np.unique(value, return_counts=True)
-            #     counts = {}
-            #     for item in value:
-            #         if item == '0':
-            #             label = 'Class 0'
-            #             counts[label] = counts.get(label, 0) + 1
-            #         elif item == '1':
-            #             label = 'Class 1'
-            #             counts[label] = counts.get(label, 0) + 1
-            #         elif item == '2':
-            #             label = 'Class 2'
-            #             counts[label] = counts.get(label, 0) + 1
-            #     print(f'Cluster {key}: {counts}')        
-            # plot_tsneV1(encoded_vectors, assignments_list, labels=label, filename='tsne_plot_infer.png')
-
             # Fit GMM
             gmm = GaussianMixture(n_components=num_clusters, covariance_type='full')
             gmm.fit(encoded_vectors.cpu().numpy())
@@ -391,6 +422,18 @@ def main():
                 print(f'Cluster {key}: {counts}')
             # plot the t-SNE plot here
             plot_tsneV1(encoded_vectors, torch.tensor(assignments_gmm), filename='tsne_plot_GMM.png')
+
+            # Highlight the patch location in the original image
+            # pdb.set_trace()
+            images_processed = []
+            for path in paths:
+                image_name = "TE-" + path.split('/')[3] + ".jpg"
+                class_label = path.split('/')[2]
+                image_path = os.path.join('..', 'deepcover', 'data', 'Fundus', class_label, image_name)
+                if image_path not in images_processed:
+                    # print(f'Processing image: {image_path}')
+                    highlight_patch_location(image_path, path)
+                    images_processed.append(image_path)
     
     if not os.path.exists('model.pth') and not os.path.exists('kmeans.pth'):
         train_vae({"batch_size": 128, "latent_dim": 350})

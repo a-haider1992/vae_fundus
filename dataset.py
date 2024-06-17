@@ -36,7 +36,7 @@ class ExplanationsPatchesDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         label = self.labels[idx]
-        return image, label
+        return image, label, self.image_paths[idx]
 
 
 class VAEDataset(Dataset):
@@ -57,7 +57,9 @@ class VAEDataset(Dataset):
         df = pd.read_csv(osp.join(self.root_dir, txt_file), header=None, index_col=False, sep=',')
         self.data = df.values
         self.image_paths = np.array([osp.join(self.root_dir, x) for x in self.data[:, 0]])
-        self.labels = np.array(self.data[:, 1])
+        self.masked_image_paths = np.array([osp.join(self.root_dir, x) for x in self.data[:, 1]])
+        pdb.set_trace()
+        self.labels = np.array(self.data[:, 2])
 
     def __len__(self):
         return len(self.image_paths)
@@ -65,7 +67,9 @@ class VAEDataset(Dataset):
     def __getitem__(self, idx):        
         # Load image
         image = Image.open(self.image_paths[idx])
+        masked_image = Image.open(self.masked_image_paths[idx])
         label = self.labels[idx]
         if self.transform:
             image = self.transform(image)
-        return image, label
+            masked_image = self.transform(masked_image)
+        return image, masked_image, label
