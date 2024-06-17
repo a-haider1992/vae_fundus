@@ -307,7 +307,7 @@ def main():
 
         # Draw a rectangle around the detected patch
         highlighted_image = original_image.copy()
-        cv2.rectangle(highlighted_image, top_left, bottom_right, (0, 255, 0), 2)
+        cv2.rectangle(highlighted_image, top_left, bottom_right, (0, 0, 255), 50)
 
         # Display the images
         class_label = original_image_path.split('/')[-2]
@@ -317,6 +317,58 @@ def main():
         highlighted_image_name = f"{class_dir}/TE-" + original_image_path.split('/')[-1]
         # print(f"Saving highlighted image to: {highlighted_image_name}")
         cv2.imwrite(highlighted_image_name, highlighted_image)
+
+    def visualize_class_images(class_folders, num_columns=10):
+        def load_images_from_folder(folder):
+            images = []
+            for filename in os.listdir(folder):
+                img_path = os.path.join(folder, filename)
+                if os.path.isfile(img_path):
+                    images.append(img_path)
+            return images
+
+        def create_image_grid(image_paths, class_label, num_columns):
+            num_images = len(image_paths)
+            num_rows = (num_images // num_columns) + int(num_images % num_columns > 0)
+            fig, axes = plt.subplots(num_rows, num_columns, figsize=(20, 2 * num_rows))
+            axes = axes.ravel()
+
+            for idx, img_path in enumerate(image_paths):
+                img = Image.open(img_path)
+                axes[idx].imshow(img)
+                axes[idx].set_title(f"{os.path.basename(img_path)}", fontsize=8)
+                axes[idx].axis('off')
+
+            for i in range(num_images, num_rows * num_columns):
+                axes[i].axis('off')
+
+            plt.tight_layout()
+            # plt.suptitle(f"Class {class_label} Images", y=1.02, fontsize=16)
+            return fig
+
+        def plot_combined_image_grid(class_folders, num_columns):
+            figs = []
+            for class_label, folder in class_folders.items():
+                image_paths = load_images_from_folder(folder)
+                fig = create_image_grid(image_paths, class_label, num_columns)
+                figs.append(fig)
+
+            combined_fig = plt.figure(figsize=(20, 2 * sum([f.get_size_inches()[1] for f in figs])))
+            
+            for i, fig in enumerate(figs):
+                ax = combined_fig.add_subplot(len(figs), 1, i + 1)
+                fig.canvas.draw()
+                img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+                ax.imshow(img)
+                ax.axis('off')
+                ax.set_title(f"Class {i} Images", fontsize=25)
+            
+            plt.tight_layout()
+            plt.savefig('combined_image_grid.png')
+
+        # Execute the plotting function
+        plot_combined_image_grid(class_folders, num_columns)
     
     def infer_vae(config):
         # Set the batch_size parameter
@@ -434,6 +486,7 @@ def main():
                     # print(f'Processing image: {image_path}')
                     highlight_patch_location(image_path, path)
                     images_processed.append(image_path)
+            visualize_class_images({'0': 'Highlighted_Images/0', '1': 'Highlighted_Images/1', '2': 'Highlighted_Images/2'}, 10)
     
     if not os.path.exists('model.pth') and not os.path.exists('kmeans.pth'):
         train_vae({"batch_size": 128, "latent_dim": 350})
