@@ -10,7 +10,7 @@ A Variational Autoencoder is a type of generative model that can learn to encode
 Fundus image reconstruction using a VAE involves training the VAE on a dataset of fundus images. The encoder network learns to encode the images into a lower-dimensional latent space representation, while the decoder network learns to reconstruct the original images from the latent space.
 
 ## Trained model
-We use 1.7M fundus tiles (or patches) of size 3x256x256 with reconstruction SSIM value of 0.99. The trained model can be found at [a link](https://qubstudentcloud-my.sharepoint.com/:u:/r/personal/3057693_ads_qub_ac_uk/Documents/VAE_FUNDUS/model.pth?csf=1&web=1&e=fZRA3K) [Size=~1.5GB]. Drop an email to request access.
+We use 1.7M 2D fundus tiles (or patches) of size 3x256x256 with reconstruction SSIM value of 0.99. The trained model can be found at [Model](https://qubstudentcloud-my.sharepoint.com/:u:/r/personal/3057693_ads_qub_ac_uk/Documents/VAE_FUNDUS/model.pth?csf=1&web=1&e=fZRA3K) [Size=~1.5GB]. Drop an email to request access.
 
 ## Benefits of VAE for Fundus Image Reconstruction
 Using a VAE for fundus image reconstruction offers several benefits:
