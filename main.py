@@ -314,11 +314,11 @@ def main():
         class_dir = os.path.join("Highlighted_Images", class_label)
         if not os.path.exists(class_dir):
             os.makedirs(class_dir)
-        highlighted_image_name = f"{class_dir}/TE-" + original_image_path.split('/')[-1]
+        highlighted_image_name = f"{class_dir}/" + original_image_path.split('/')[-1]
         # print(f"Saving highlighted image to: {highlighted_image_name}")
         cv2.imwrite(highlighted_image_name, highlighted_image)
 
-    def visualize_class_images(class_folders, num_columns=10):
+    def visualize_class_images(class_folders, num_columns=5):
         def load_images_from_folder(folder):
             images = []
             for filename in os.listdir(folder):
@@ -327,7 +327,7 @@ def main():
                     images.append(img_path)
             return images
 
-        def create_image_grid(image_paths, class_label, num_columns):
+        def create_image_grid(image_paths, num_columns):
             num_images = len(image_paths)
             num_rows = (num_images // num_columns) + int(num_images % num_columns > 0)
             fig, axes = plt.subplots(num_rows, num_columns, figsize=(20, 2 * num_rows))
@@ -336,39 +336,39 @@ def main():
             for idx, img_path in enumerate(image_paths):
                 img = Image.open(img_path)
                 axes[idx].imshow(img)
-                axes[idx].set_title(f"{os.path.basename(img_path)}", fontsize=8)
+                # Remove title to avoid showing image name
                 axes[idx].axis('off')
 
             for i in range(num_images, num_rows * num_columns):
                 axes[i].axis('off')
 
             plt.tight_layout()
-            # plt.suptitle(f"Class {class_label} Images", y=1.02, fontsize=16)
             return fig
 
         def plot_combined_image_grid(class_folders, num_columns):
             figs = []
             for class_label, folder in class_folders.items():
                 image_paths = load_images_from_folder(folder)
-                fig = create_image_grid(image_paths, class_label, num_columns)
-                figs.append(fig)
+                fig = create_image_grid(image_paths, num_columns)
+                figs.append((fig, class_label))
 
-            combined_fig = plt.figure(figsize=(20, 2 * sum([f.get_size_inches()[1] for f in figs])))
-            
-            for i, fig in enumerate(figs):
+            combined_fig = plt.figure(figsize=(20, 2 * sum([f[0].get_size_inches()[1] for f in figs])))
+
+            for i, (fig, class_label) in enumerate(figs):
                 ax = combined_fig.add_subplot(len(figs), 1, i + 1)
                 fig.canvas.draw()
                 img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
                 img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
                 ax.imshow(img)
                 ax.axis('off')
-                ax.set_title(f"Class {i} Images", fontsize=25)
-            
+                ax.set_title(f"Class {class_label} Images", fontsize=25)
+
             plt.tight_layout()
             plt.savefig('combined_image_grid.png')
 
         # Execute the plotting function
         plot_combined_image_grid(class_folders, num_columns)
+
     
     def infer_vae(config):
         # Set the batch_size parameter
@@ -381,8 +381,8 @@ def main():
         # filename = 'fundus_explanations.txt' contains the list of images to be used for inference
         # The images are explanations generated DeepCover (refer to the paper for more details)
         # The images are the found locations by DeepCover in the original fundus images
-        test_dataset = ExplanationsPatchesDataset(txt_file="fundus_explanations.txt", root_dir=".", transform=transform)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, sampler=None)
+        test_dataset = ExplanationsPatchesDataset(txt_file="lime_gradcam_deepcover_all.txt", root_dir=".", transform=transform)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, sampler=None, shuffle=True)
 
         model = AutoencoderKMeans(input_dim, latent_dim)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -394,8 +394,8 @@ def main():
         
         model.load_state_dict(torch.load('model.pth'))
         model.eval()
-        kmeans = KMeans(num_clusters, latent_dim).to(device)
-        kmeans.load_state_dict(torch.load('kmeans.pth'))
+        # kmeans = KMeans(num_clusters, latent_dim).to(device)
+        # kmeans.load_state_dict(torch.load('kmeans.pth'))
         encoded_vectors = []
         assignments_list = []
         labels = []
@@ -409,10 +409,10 @@ def main():
                 label = data[1]
                 path = data[2]
                 encoded, recon_batch, mu, logvar = model(image)
-                centroids, assignments = kmeans(encoded.detach())
-                kmeans.update_centroids(encoded.detach(), assignments)
+                # centroids, assignments = kmeans(encoded.detach())
+                # kmeans.update_centroids(encoded.detach(), assignments)
                 encoded_vectors.append(encoded)
-                assignments_list.append(assignments)
+                # assignments_list.append(assignments)
                 labels.append(label)
                 paths.append(path)
             #     for i, assign in enumerate(assignments):
@@ -438,6 +438,7 @@ def main():
                 cluster_assignments[str(assign)]['distance'].append(distance)
 
             # Sort paths by distance within each cluster and print top 10
+            closest_10_paths = []
             for key, value in cluster_assignments.items():
                 # Combine distances and paths and sort them
                 combined = list(zip(value['distance'], value['paths']))
@@ -451,14 +452,16 @@ def main():
                 
                 # Extract the top 10 paths for plotting
                 top_10_paths = [path for _, path in top_10_combined]
+                closest_10_paths.append(top_10_paths)
+
+                # pdb.set_trace()
                 
                 # Plot the top 10 images for the current cluster
-                plot_images(top_10_paths, key)
+                # plot_images(top_10_paths, key)
             
             # Plot all clusters
             plot_all_clusters(cluster_assignments, num_clusters)
             
-
             # Print cluster information
             for key, value in cluster_assignments.items():
                 counts = {}
@@ -478,15 +481,36 @@ def main():
 
             # Highlight the patch location in the original image
             # pdb.set_trace()
-            images_processed = []
-            for path in paths:
-                image_name = "TE-" + path.split('/')[3] + ".jpg"
+            images_processed = []  # Using a set for better performance on membership checks
+            print("Processing explanations: ", len(paths))
+            # pdb.set_trace()
+            all_paths = [path for sublist in closest_10_paths for path in sublist]
+            print("Number of explanations: ", len(all_paths))
+            # pdb.set_trace()
+            # Tracing explanations for each original image
+            for path in all_paths:
                 class_label = path.split('/')[2]
-                image_path = os.path.join('..', 'deepcover', 'data', 'Fundus', class_label, image_name)
-                if image_path not in images_processed:
-                    # print(f'Processing image: {image_path}')
-                    highlight_patch_location(image_path, path)
-                    images_processed.append(image_path)
+                explainability_folder = path.split('/')[1]
+                
+                # Constructing the image path based on folder type
+                if explainability_folder in ['lime_extracted_patch', 'gradcam_extracted_patches']:
+                    image_name = path.split('/')[3] + ".jpg"
+                    image_path = os.path.join('..', 'deepcover', 'data', 'Fundus_correct', class_label, image_name)
+                elif explainability_folder == 'patches':
+                    image_name = "TE-" + path.split('/')[3] + ".jpg"
+                    image_path = os.path.join('..', 'deepcover', 'data', 'Fundus', class_label, image_name)
+                else:
+                    continue  # Skip unknown folders
+                print(f'Processing image: {image_path}')
+                highlight_patch_location(image_path, path)
+                images_processed.append(image_path)
+                # Process image if it has not been processed yet
+                # if image_path not in images_processed:
+                #     print(f'Processing image: {image_path}')
+                #     highlight_patch_location(image_path, path)
+                #     images_processed.add(image_path)
+            
+            print("Number of explanations processed: ", len(images_processed))
             visualize_class_images({'0': 'Highlighted_Images/0', '1': 'Highlighted_Images/1', '2': 'Highlighted_Images/2'}, 10)
     
     if not os.path.exists('model.pth') and not os.path.exists('kmeans.pth'):
