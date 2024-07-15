@@ -82,7 +82,7 @@ def main():
         # Plot the centroids
         plt.scatter(centroids[:, 0], centroids[:, 1], c='red', marker='X', s=100, label='Centroids')
         
-        plt.title('t-SNE of Encoded Vectors')
+        plt.title('t-SNE of SNP=CFH')
         plt.xlabel('t-SNE Dimension 1')
         plt.ylabel('t-SNE Dimension 2')
         plt.colorbar(label='Cluster Assignment')
@@ -310,12 +310,13 @@ def main():
         cv2.rectangle(highlighted_image, top_left, bottom_right, (0, 0, 255), 50)
 
         # Display the images
+        pdb.set_trace()
         class_label = original_image_path.split('/')[-2]
         class_dir = os.path.join("Highlighted_Images", class_label)
         if not os.path.exists(class_dir):
             os.makedirs(class_dir)
         highlighted_image_name = f"{class_dir}/" + original_image_path.split('/')[-1]
-        # print(f"Saving highlighted image to: {highlighted_image_name}")
+        print(f"Saving highlighted image to: {highlighted_image_name}")
         cv2.imwrite(highlighted_image_name, highlighted_image)
 
     def visualize_class_images(class_folders, num_columns=5):
@@ -381,7 +382,7 @@ def main():
         # filename = 'fundus_explanations.txt' contains the list of images to be used for inference
         # The images are explanations generated DeepCover (refer to the paper for more details)
         # The images are the found locations by DeepCover in the original fundus images
-        test_dataset = ExplanationsPatchesDataset(txt_file="lime_gradcam_deepcover_all.txt", root_dir=".", transform=transform)
+        test_dataset = ExplanationsPatchesDataset(txt_file="gradcam_patches_CFH.txt", root_dir=".", transform=transform)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, sampler=None, shuffle=True)
 
         model = AutoencoderKMeans(input_dim, latent_dim)
@@ -463,21 +464,23 @@ def main():
             plot_all_clusters(cluster_assignments, num_clusters)
             
             # Print cluster information
-            for key, value in cluster_assignments.items():
-                counts = {}
-                for item in value['label']:
-                    if item == '0':
-                        label = 'Class 0'
-                        counts[label] = counts.get(label, 0) + 1
-                    elif item == '1':
-                        label = 'Class 1'
-                        counts[label] = counts.get(label, 0) + 1
-                    elif item == '2':
-                        label = 'Class 2'
-                        counts[label] = counts.get(label, 0) + 1
-                print(f'Cluster {key}: {counts}')
+            with open("class-cluster-CFH.txt", "w") as f:
+                for key, value in cluster_assignments.items():
+                    counts = {}
+                    for item in value['label']:
+                        if item == '0':
+                            label = 'Class 0'
+                            counts[label] = counts.get(label, 0) + 1
+                        elif item == '1':
+                            label = 'Class 1'
+                            counts[label] = counts.get(label, 0) + 1
+                        elif item == '2':
+                            label = 'Class 2'
+                            counts[label] = counts.get(label, 0) + 1
+                    print(f'Cluster {key}: {counts}')
+                    f.write(f'Cluster {key}: {counts}\n')
             # plot the t-SNE plot here
-            plot_tsneV1(encoded_vectors, torch.tensor(assignments_gmm), filename='tsne_plot_GMM.png')
+            plot_tsneV1(encoded_vectors, torch.tensor(assignments_gmm), filename='tsne_plot_CFH.png')
 
             # Highlight the patch location in the original image
             # pdb.set_trace()
@@ -493,9 +496,9 @@ def main():
                 explainability_folder = path.split('/')[1]
                 
                 # Constructing the image path based on folder type
-                if explainability_folder in ['lime_extracted_patch', 'gradcam_extracted_patches']:
+                if explainability_folder.startswith("gradcam_patches") or explainability_folder.startswith("scorecam_patches"):
                     image_name = path.split('/')[3] + ".jpg"
-                    image_path = os.path.join('..', 'deepcover', 'data', 'Fundus_correct', class_label, image_name)
+                    image_path = os.path.join('..', 'deepcover', 'data', 'Fundus_correct_CFH', class_label, image_name)
                 elif explainability_folder == 'patches':
                     image_name = "TE-" + path.split('/')[3] + ".jpg"
                     image_path = os.path.join('..', 'deepcover', 'data', 'Fundus', class_label, image_name)
